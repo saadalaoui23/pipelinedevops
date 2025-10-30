@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-trajet
+  namespace: transport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-trajet
+  template:
+    metadata:
+      labels:
+        app: service-trajet
+    spec:
+      containers:
+        - name: service-trajet
+          image: saadalaouisosse/trajet-service:1.0.0
+          imagePullPolicy: Never
+
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: trajet-horraire-secret
