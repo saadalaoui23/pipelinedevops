@@ -47,13 +47,14 @@ pipeline {
       steps {
         // mise à jour du manifeste avant déploiement
         bat """
-          sed -i 's|image: saadalaouisosse/trajet-service:1.0.0|image: ${IMAGE_NAME}|g' Deployment.yaml
-          kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-          kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE}
-        """
+powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
+kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
+kubectl apply -f postgres-service.yaml -n ${K8S_NAMESPACE}
+kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
+kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE}
+"""
+
       }
     }
   }
