@@ -67,6 +67,11 @@
     <version>1.18.34</version>
     <scope>provided</scope>
 </dependency>
+<dependency>
+    <groupId>com.h2database</groupId>
+    <artifactId>h2</artifactId>
+    <scope>test</scope>
+</dependency>
 
 <!-- Dépendance pour envoi email / SMS (ex. JavaMail, ou Twilio) -->
 
