@@ -18,20 +18,20 @@ pipeline {
 
     stage('Build & Test') {
       steps {
-        sh 'mvn clean test'
+        bat 'mvn clean test'
       }
     }
 
     stage('Build Docker Image') {
       steps {
-        sh "docker build -t ${IMAGE_NAME} ."
+        bat "docker build -t ${IMAGE_NAME} ."
       }
     }
 
     stage('Push Docker Image') {
       steps {
         withCredentials([string(credentialsId: 'dockerhub-token', variable: 'DOCKER_TOKEN')]) {
-          sh """
+          bat """
             echo $DOCKER_TOKEN | docker login -u saadalaouisosse --password-stdin
             docker push ${IMAGE_NAME}
           """
@@ -42,7 +42,7 @@ pipeline {
     stage('Deploy to Kubernetes') {
       steps {
         // mise à jour du manifeste avant déploiement
-        sh """
+        bat """
           sed -i 's|image: saadalaouisosse/trajet-service:1.0.0|image: ${IMAGE_NAME}|g' Deployment.yaml
           kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
           kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
