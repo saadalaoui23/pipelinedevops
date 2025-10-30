@@ -1,5 +1,9 @@
 pipeline {
   agent any
+  
+  tools {
+    maven 'Maven3'
+  }
 
   environment {
     APP_NAME = "service-trajet"
