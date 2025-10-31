@@ -26,6 +26,22 @@ pipeline {
         bat 'mvn clean test'
       }
     }
+    stage('SAST - SonarCloud Analysis') {
+  steps {
+    withSonarQubeEnv('sonarcloud') {
+      withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+        bat """
+          mvn sonar:sonar ^
+            -Dsonar.projectKey=<saadalaoui23_pipelinedevops ^
+            -Dsonar.organization=saadalaoui23 ^
+            -Dsonar.host.url=https://sonarcloud.io ^
+            -Dsonar.login=%SONAR_TOKEN%
+        """
+      }
+    }
+  }
+}
+
 
     stage('Build Docker Image') {
       steps {
