@@ -9,6 +9,7 @@ pipeline {
     APP_NAME = "service-trajet"
     IMAGE_TAG = "${BUILD_NUMBER}"
     IMAGE_NAME = "saadalaouisosse/${APP_NAME}:${IMAGE_TAG}"
+    KUBECONFIG = "C:\\ProgramData\\Jenkins\\.kube\\config"
     K8S_NAMESPACE = "transport"
   }
 
