@@ -79,78 +79,64 @@ pipeline {
       }
     }
 
-    stage('Init Docker & Minikube') {
-      steps {
-        bat '''
-          echo ===== Vérification et correction des droits KUBECONFIG =====
-          powershell -Command ^
-            "$kubeConfigPath = 'C:\\ProgramData\\Jenkins\\.kube\\config';" ^
-            "$jenkinsServiceUser = 'NT AUTHORITY\\SYSTEM';" ^
-            "if (-Not (Test-Path $kubeConfigPath)) { Write-Error 'Le fichier KUBECONFIG est introuvable'; exit 1 };" ^
-            "$acl = Get-Acl -LiteralPath $kubeConfigPath;" ^
-            "$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','None','None','Allow');" ^
-            "$acl.SetAccessRule($rule);" ^
-            "Set-Acl -LiteralPath $kubeConfigPath -AclObject $acl;" ^
-            "Write-Host 'ACL fixé pour KUBECONFIG';" ^
-            "$minikubeDir = 'C:\\Users\\saada\\.minikube';" ^
-            "if (Test-Path $minikubeDir) {" ^
-            "  $dirAcl = Get-Acl -LiteralPath $minikubeDir;" ^
-            "  $dirRule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','ContainerInherit,ObjectInherit','None','Allow');" ^
-            "  $dirAcl.SetAccessRule($dirRule);" ^
-            "  Set-Acl -LiteralPath $minikubeDir -AclObject $dirAcl;" ^
-            "  Write-Host 'ACL fixé pour le répertoire .minikube'" ^
-            "}"
+   stage('Init Docker & Minikube') {
+  steps {
+    bat '''
+      echo ===== Vérification de Docker =====
+      docker version >nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        echo Docker non disponible.
+        exit /b 1
+      )
 
-          echo ===== Vérification de Docker =====
-          docker version >nul 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            echo Docker non disponible.
-            echo Assurez-vous que Docker Desktop est lancé avant Jenkins.
-            exit /b 1
-          ) else (
-            echo Docker est actif.
-          )
+      echo ===== Vérification du cluster Minikube =====
+      minikube status >nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        echo Cluster inactif, démarrage...
+        minikube start --driver=docker --memory=4096 --cpus=2
+      ) else (
+        echo Cluster actif.
+      )
 
-          echo ===== Vérification et redémarrage du cluster Minikube =====
-          minikube status >nul 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            echo Cluster inactif, démarrage...
-            minikube start --driver=docker --memory=4096 --cpus=2
-            if %ERRORLEVEL% NEQ 0 (
-              echo Échec du démarrage de Minikube.
-              exit /b 1
-            )
-          ) else (
-            echo Cluster actif, vérification de la connectivité...
-            kubectl get nodes >nul 2>&1
-            if %ERRORLEVEL% NEQ 0 (
-              echo Cluster non accessible, redémarrage...
-              minikube delete
-              minikube start --driver=docker --memory=4096 --cpus=2
-            )
-          )
+      echo ===== Copie de la configuration Minikube pour Jenkins =====
+      if not exist "C:\\ProgramData\\Jenkins\\.kube" mkdir "C:\\ProgramData\\Jenkins\\.kube"
+      
+      REM Copier le kubeconfig de minikube vers Jenkins
+      copy /Y "%USERPROFILE%\\.kube\\config" "C:\\ProgramData\\Jenkins\\.kube\\config"
+      
+      REM Copier les certificats minikube
+      if not exist "C:\\ProgramData\\Jenkins\\.minikube" mkdir "C:\\ProgramData\\Jenkins\\.minikube"
+      xcopy /E /I /Y "%USERPROFILE%\\.minikube\\ca.crt" "C:\\ProgramData\\Jenkins\\.minikube\\"
+      xcopy /E /I /Y "%USERPROFILE%\\.minikube\\profiles" "C:\\ProgramData\\Jenkins\\.minikube\\profiles\\"
 
-          echo ===== Configuration kubectl =====
-          minikube update-context
-          kubectl config use-context minikube
-          
-          echo ===== Test de connectivité =====
-          kubectl get nodes
-          if %ERRORLEVEL% NEQ 0 (
-            echo kubectl ne peut pas atteindre le cluster Minikube.
-            exit /b 1
-          )
-          
-          echo ===== Création du namespace si nécessaire =====
-          kubectl get namespace %K8S_NAMESPACE% >nul 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            kubectl create namespace %K8S_NAMESPACE%
-          )
-          
-          echo Initialisation terminée avec succès.
-        '''
-      }
-    }
+      echo ===== Mise à jour du kubeconfig pour Jenkins =====
+      powershell -Command ^
+        "$config = Get-Content 'C:\\ProgramData\\Jenkins\\.kube\\config' -Raw;" ^
+        "$config = $config -replace [regex]::Escape('%USERPROFILE%'), 'C:\\ProgramData\\Jenkins';" ^
+        "$config = $config -replace [regex]::Escape($env:USERPROFILE), 'C:\\ProgramData\\Jenkins';" ^
+        "$config | Set-Content 'C:\\ProgramData\\Jenkins\\.kube\\config'"
+
+      echo ===== Configuration kubectl =====
+      set KUBECONFIG=C:\\ProgramData\\Jenkins\\.kube\\config
+      kubectl config use-context minikube
+      
+      echo ===== Test de connectivité =====
+      kubectl get nodes
+      if %ERRORLEVEL% NEQ 0 (
+        echo Échec de connexion au cluster.
+        exit /b 1
+      )
+      
+      echo ===== Création du namespace =====
+      kubectl get namespace transport >nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        kubectl create namespace transport
+      )
+      
+      echo Initialisation terminée avec succès.
+    '''
+  }
+}
 
     stage('Deploy to Kubernetes') {
       steps {
