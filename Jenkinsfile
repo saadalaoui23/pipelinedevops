@@ -26,43 +26,41 @@ pipeline {
         bat 'mvn clean test'
       }
     }
+
     stage('SAST - SonarCloud Analysis') {
-  steps {
-    withSonarQubeEnv('sonarcloud') {
-      withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
-        bat """
-          mvn sonar:sonar ^
-            -Dsonar.projectKey=saadalaoui23_pipelinedevops ^
-            -Dsonar.organization=saadalaoui23 ^
-            -Dsonar.host.url=https://sonarcloud.io ^
-            -Dsonar.login=%SONAR_TOKEN%
-        """
+      steps {
+        withSonarQubeEnv('sonarcloud') {
+          withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+            bat """
+              mvn sonar:sonar ^
+                -Dsonar.projectKey=saadalaoui23_pipelinedevops ^
+                -Dsonar.organization=saadalaoui23 ^
+                -Dsonar.host.url=https://sonarcloud.io ^
+                -Dsonar.login=%SONAR_TOKEN%
+            """
+          }
+        }
       }
     }
-  }
-}
 
-
-      stage('SCA - Dependency Check') {
-  steps {
-    bat '''
-      if not exist dependency-check-report mkdir dependency-check-report
-      dependency-check.bat ^
-        --project "service-trajet" ^
-        --scan . ^
-        --format "HTML" ^
-        --format "JSON" ^
-        --out dependency-check-report
-    '''
-  }
-  post {
-    always {
-      archiveArtifacts artifacts: 'dependency-check-report/**', allowEmptyArchive: true
+    stage('SCA - Dependency Check') {
+      steps {
+        bat '''
+          if not exist dependency-check-report mkdir dependency-check-report
+          dependency-check.bat ^
+            --project "service-trajet" ^
+            --scan . ^
+            --format "HTML" ^
+            --format "JSON" ^
+            --out dependency-check-report
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'dependency-check-report/**', allowEmptyArchive: true
+        }
+      }
     }
-  }
-}
-
-
 
     stage('Build Docker Image') {
       steps {
@@ -74,96 +72,115 @@ pipeline {
       steps {
         withCredentials([string(credentialsId: 'dockerhub-token', variable: 'DOCKER_TOKEN')]) {
           bat """
-            echo $DOCKER_TOKEN | docker login -u saadalaouisosse --password-stdin
+            echo %DOCKER_TOKEN% | docker login -u saadalaouisosse --password-stdin
             docker push ${IMAGE_NAME}
           """
         }
       }
     }
 
-  stage('Init Docker & Minikube') {
-  steps {
-    bat '''
-      echo ===== Vérification et correction des droits KUBECONFIG =====
-      powershell -Command ^
-        "$kubeConfigPath = 'C:\\ProgramData\\Jenkins\\.kube\\config';" ^
-        "$jenkinsServiceUser = 'NT AUTHORITY\\SYSTEM';" ^
-        "if (-Not (Test-Path $kubeConfigPath)) { Write-Error 'Le fichier KUBECONFIG est introuvable : $kubeConfigPath'; exit 1 }" ^
-        "$pathsToFix = @($kubeConfigPath, 'C:\\Users\\saada\\.minikube\\profiles\\minikube\\client.crt', 'C:\\Users\\saada\\.minikube\\profiles\\minikube\\client.key', 'C:\\Users\\saada\\.minikube');" ^
-        "foreach ($p in $pathsToFix) { if (Test-Path $p) { Write-Host 'Fixation des ACL sur:' $p; $acl = Get-Acl -LiteralPath $p; $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $acl.SetAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl } else { Write-Host 'Avertissement: chemin inexistant:' $p } }"
+    stage('Init Docker & Minikube') {
+      steps {
+        bat '''
+          echo ===== Vérification et correction des droits KUBECONFIG =====
+          powershell -Command ^
+            "$kubeConfigPath = 'C:\\ProgramData\\Jenkins\\.kube\\config';" ^
+            "$jenkinsServiceUser = 'NT AUTHORITY\\SYSTEM';" ^
+            "if (-Not (Test-Path $kubeConfigPath)) { Write-Error 'Le fichier KUBECONFIG est introuvable'; exit 1 };" ^
+            "$acl = Get-Acl -LiteralPath $kubeConfigPath;" ^
+            "$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','None','None','Allow');" ^
+            "$acl.SetAccessRule($rule);" ^
+            "Set-Acl -LiteralPath $kubeConfigPath -AclObject $acl;" ^
+            "Write-Host 'ACL fixé pour KUBECONFIG';" ^
+            "$minikubeDir = 'C:\\Users\\saada\\.minikube';" ^
+            "if (Test-Path $minikubeDir) {" ^
+            "  $dirAcl = Get-Acl -LiteralPath $minikubeDir;" ^
+            "  $dirRule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','ContainerInherit,ObjectInherit','None','Allow');" ^
+            "  $dirAcl.SetAccessRule($dirRule);" ^
+            "  Set-Acl -LiteralPath $minikubeDir -AclObject $dirAcl;" ^
+            "  Write-Host 'ACL fixé pour le répertoire .minikube'" ^
+            "}"
 
-      echo ===== Vérification de Docker =====
-      docker version >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        echo Docker non disponible.
-        echo Assurez-vous que Docker Desktop est lancé avant Jenkins.
-        exit /b 1
-      ) else (
-        echo Docker est actif.
-      )
+          echo ===== Vérification de Docker =====
+          docker version >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            echo Docker non disponible.
+            echo Assurez-vous que Docker Desktop est lancé avant Jenkins.
+            exit /b 1
+          ) else (
+            echo Docker est actif.
+          )
 
-      echo ===== Vérification du cluster Minikube =====
-      minikube status >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        echo Cluster inactif → démarrage...
-        minikube start --driver=docker --memory=4096 --cpus=2 --image-mirror-country=fr
-        if %ERRORLEVEL% NEQ 0 (
-          echo Échec du démarrage de Minikube.
-          exit /b 1
-        )
-      ) else (
-        echo Cluster déjà actif.
-      )
+          echo ===== Vérification et redémarrage du cluster Minikube =====
+          minikube status >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            echo Cluster inactif, démarrage...
+            minikube start --driver=docker --memory=4096 --cpus=2
+            if %ERRORLEVEL% NEQ 0 (
+              echo Échec du démarrage de Minikube.
+              exit /b 1
+            )
+          ) else (
+            echo Cluster actif, vérification de la connectivité...
+            kubectl get nodes >nul 2>&1
+            if %ERRORLEVEL% NEQ 0 (
+              echo Cluster non accessible, redémarrage...
+              minikube delete
+              minikube start --driver=docker --memory=4096 --cpus=2
+            )
+          )
 
-      kubectl config use-context minikube
-      kubectl get nodes
-      if %ERRORLEVEL% NEQ 0 (
-        echo kubectl ne peut pas atteindre le cluster Minikube.
-        exit /b 1
-      )
-      echo Initialisation terminée avec succès.
-    '''
-  }
-}
-
-
+          echo ===== Configuration kubectl =====
+          minikube update-context
+          kubectl config use-context minikube
+          
+          echo ===== Test de connectivité =====
+          kubectl get nodes
+          if %ERRORLEVEL% NEQ 0 (
+            echo kubectl ne peut pas atteindre le cluster Minikube.
+            exit /b 1
+          )
+          
+          echo ===== Création du namespace si nécessaire =====
+          kubectl get namespace %K8S_NAMESPACE% >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            kubectl create namespace %K8S_NAMESPACE%
+          )
+          
+          echo Initialisation terminée avec succès.
+        '''
+      }
+    }
 
     stage('Deploy to Kubernetes') {
       steps {
         bat """
-      powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
+          powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
 
-      
-      kubectl get secret trajet-horraire-secret -n ${K8S_NAMESPACE} >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        echo "Création du secret trajet-horraire-secret..."
-        kubectl create secret generic trajet-horraire-secret ^
-          --from-literal=DB_HOST=trajet-horraire-db ^
-          --from-literal=DB_PORT=5432 ^
-          --from-literal=DB_NAME=service_trajet_horraire ^
-          --from-literal=DB_USER=trajet_horraire ^
-          --from-literal=DB_PASS=trajet_horraire ^
-          --from-literal=SPRING_PROFILES_ACTIVE=prod ^
-          -n ${K8S_NAMESPACE}
-      ) else (
-        echo "Secret déjà présent, aucune création nécessaire."
-      )
+          kubectl get secret trajet-horraire-secret -n ${K8S_NAMESPACE} >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            echo Création du secret trajet-horraire-secret...
+            kubectl create secret generic trajet-horraire-secret ^
+              --from-literal=DB_HOST=trajet-horraire-db ^
+              --from-literal=DB_PORT=5432 ^
+              --from-literal=DB_NAME=service_trajet_horraire ^
+              --from-literal=DB_USER=trajet_horraire ^
+              --from-literal=DB_PASS=trajet_horraire ^
+              --from-literal=SPRING_PROFILES_ACTIVE=prod ^
+              -n ${K8S_NAMESPACE}
+          ) else (
+            echo Secret déjà présent, aucune création nécessaire.
+          )
 
-      # Appliquer les manifests
-      kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
-      kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
-      kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
-      kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-      kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE}
-    """
+          kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
+          kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
+          kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
+          kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+          kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=5m
+        """
+      }
+    }
   }
-}
-
-
-  
-    
-  }
-  
 
   post {
     success {
