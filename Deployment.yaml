@@ -15,11 +15,11 @@ spec:
     spec:
       containers:
         - name: service-trajet
-          image: saadalaouisosse/trajet-service:1.0.0
-          imagePullPolicy: Never
-
+          image: saadalaouisosse/trajet-service:1.0.0   # image valide sur Docker Hub
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:
             - secretRef:
                 name: trajet-horraire-secret
+                

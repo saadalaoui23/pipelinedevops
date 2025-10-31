@@ -45,19 +45,38 @@ pipeline {
 
     stage('Deploy to Kubernetes') {
       steps {
-        // mise à jour du manifeste avant déploiement
         bat """
-powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
-kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
-kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
-kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
-kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE}
-"""
+      powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
 
-      }
-    }
+      
+      kubectl get secret trajet-horraire-secret -n ${K8S_NAMESPACE} >nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        echo "Création du secret trajet-horraire-secret..."
+        kubectl create secret generic trajet-horraire-secret ^
+          --from-literal=DB_HOST=trajet-horraire-db ^
+          --from-literal=DB_PORT=5432 ^
+          --from-literal=DB_NAME=service_trajet_horraire ^
+          --from-literal=DB_USER=trajet_horraire ^
+          --from-literal=DB_PASS=trajet_horraire ^
+          --from-literal=SPRING_PROFILES_ACTIVE=prod ^
+          -n ${K8S_NAMESPACE}
+      ) else (
+        echo "Secret déjà présent, aucune création nécessaire."
+      )
+
+      # Appliquer les manifests
+      kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
+      kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
+      kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
+      kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
+      kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE}
+    """
   }
+}
+
+    
+  }
+  
 
   post {
     success {
