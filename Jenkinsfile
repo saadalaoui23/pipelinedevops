@@ -43,6 +43,25 @@ pipeline {
 }
 
 
+      stage('SCA - Dependency Check') {
+        steps {
+          bat '''
+      dependency-check.bat ^
+        --project "service-trajet" ^
+        --scan . ^
+        --format "HTML" ^
+        --format "JSON" ^
+        --out dependency-check-report
+    '''
+        }
+        post {
+            always {
+          archiveArtifacts artifacts: 'dependency-check-report/**', allowEmptyArchive: true
+    }
+  }
+}
+
+
     stage('Build Docker Image') {
       steps {
         bat "docker build -t ${IMAGE_NAME} ."
