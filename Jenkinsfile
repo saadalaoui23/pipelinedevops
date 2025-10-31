@@ -81,6 +81,24 @@ pipeline {
       }
     }
 
+    stage('Start Minikube') {
+  steps {
+    bat '''
+      echo "===== Vérification du cluster Minikube ====="
+      minikube status > nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        echo "Cluster inactif → démarrage..."
+        minikube start
+      ) else (
+        echo "Cluster déjà actif."
+      )
+      kubectl config use-context minikube
+      kubectl get nodes
+    '''
+  }
+}
+
+
     stage('Deploy to Kubernetes') {
       steps {
         bat """
@@ -112,6 +130,8 @@ pipeline {
   }
 }
 
+
+  
     
   }
   
