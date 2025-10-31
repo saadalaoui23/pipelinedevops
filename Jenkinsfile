@@ -81,17 +81,28 @@ pipeline {
       }
     }
 
-    stage('Start Minikube') {
+  stage('Init Docker & Minikube') {
   steps {
     bat '''
-      echo "===== Vérification du cluster Minikube ====="
-      minikube status > nul 2>&1
+      echo ===== Vérification de Docker =====
+      docker version >nul 2>&1
       if %ERRORLEVEL% NEQ 0 (
-        echo "Cluster inactif → démarrage..."
-        minikube start
+        echo Docker non disponible.
+        echo Assurez-vous que Docker Desktop est lancé avant Jenkins.
+        exit /b 1
       ) else (
-        echo "Cluster déjà actif."
+        echo Docker est actif.
       )
+
+      echo ===== Vérification du cluster Minikube =====
+      minikube status >nul 2>&1
+      if %ERRORLEVEL% NEQ 0 (
+        echo Cluster inactif → démarrage...
+        minikube start --driver=docker --memory=4096 --cpus=2 --image-mirror-country=fr
+      ) else (
+        echo Cluster déjà actif.
+      )
+
       kubectl config use-context minikube
       kubectl get nodes
     '''
