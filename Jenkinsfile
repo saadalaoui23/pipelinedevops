@@ -84,6 +84,14 @@ pipeline {
   stage('Init Docker & Minikube') {
   steps {
     bat '''
+      echo ===== Vérification et correction des droits KUBECONFIG =====
+      powershell -Command ^
+        "$kubeConfigPath = 'C:\\ProgramData\\Jenkins\\.kube\\config';" ^
+        "$jenkinsServiceUser = 'NT AUTHORITY\\SYSTEM';" ^
+        "if (-Not (Test-Path $kubeConfigPath)) { Write-Error 'Le fichier KUBECONFIG est introuvable : $kubeConfigPath'; exit 1 }" ^
+        "$pathsToFix = @($kubeConfigPath, 'C:\\Users\\saada\\.minikube\\profiles\\minikube\\client.crt', 'C:\\Users\\saada\\.minikube\\profiles\\minikube\\client.key', 'C:\\Users\\saada\\.minikube');" ^
+        "foreach ($p in $pathsToFix) { if (Test-Path $p) { Write-Host 'Fixation des ACL sur:' $p; $acl = Get-Acl -LiteralPath $p; $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($jenkinsServiceUser,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $acl.SetAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl } else { Write-Host 'Avertissement: chemin inexistant:' $p } }"
+
       echo ===== Vérification de Docker =====
       docker version >nul 2>&1
       if %ERRORLEVEL% NEQ 0 (
@@ -99,15 +107,25 @@ pipeline {
       if %ERRORLEVEL% NEQ 0 (
         echo Cluster inactif → démarrage...
         minikube start --driver=docker --memory=4096 --cpus=2 --image-mirror-country=fr
+        if %ERRORLEVEL% NEQ 0 (
+          echo Échec du démarrage de Minikube.
+          exit /b 1
+        )
       ) else (
         echo Cluster déjà actif.
       )
 
       kubectl config use-context minikube
       kubectl get nodes
+      if %ERRORLEVEL% NEQ 0 (
+        echo kubectl ne peut pas atteindre le cluster Minikube.
+        exit /b 1
+      )
+      echo Initialisation terminée avec succès.
     '''
   }
 }
+
 
 
     stage('Deploy to Kubernetes') {
