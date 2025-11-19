@@ -11,24 +11,30 @@ pipeline {
     IMAGE_NAME = "saadalaouisosse/${APP_NAME}:${IMAGE_TAG}"
     KUBECONFIG = "C:\\ProgramData\\Jenkins\\.kube\\config"
     K8S_NAMESPACE = "transport"
+    DOCKER_REGISTRY = "docker.io"
   }
 
   stages {
 
     stage('Checkout') {
       steps {
+        echo "=== 📥 STAGE: Checkout ==="
         git branch: 'main', url: 'https://github.com/saadalaoui23/pipelinedevops.git'
+        echo "✅ Code cloned successfully"
       }
     }
 
     stage('Build & Test') {
       steps {
+        echo "=== 🔨 STAGE: Build & Test ==="
         bat 'mvn clean test'
+        echo "✅ Build and tests completed"
       }
     }
 
     stage('SAST - SonarCloud Analysis') {
       steps {
+        echo "=== 🔍 STAGE: SAST Analysis ==="
         withSonarQubeEnv('sonarcloud') {
           withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
             bat """
@@ -40,11 +46,13 @@ pipeline {
             """
           }
         }
+        echo "✅ SonarCloud analysis completed"
       }
     }
 
     stage('SCA - Dependency Check') {
       steps {
+        echo "=== 📦 STAGE: Dependency Check ==="
         bat '''
           if not exist dependency-check-report mkdir dependency-check-report
           dependency-check.bat ^
@@ -54,6 +62,7 @@ pipeline {
             --format "JSON" ^
             --out dependency-check-report
         '''
+        echo "✅ Dependency check completed"
       }
       post {
         always {
@@ -64,118 +73,139 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
+        echo "=== 🐳 STAGE: Build Docker Image ==="
         bat "docker build -t ${IMAGE_NAME} ."
+        echo "✅ Docker image built: ${IMAGE_NAME}"
       }
     }
 
     stage('Push Docker Image') {
       steps {
+        echo "=== 📤 STAGE: Push Docker Image ==="
         withCredentials([string(credentialsId: 'dockerhub-token', variable: 'DOCKER_TOKEN')]) {
           bat """
             echo %DOCKER_TOKEN% | docker login -u saadalaouisosse --password-stdin
             docker push ${IMAGE_NAME}
           """
         }
+        echo "✅ Docker image pushed to registry"
       }
     }
 
-   stage('Init Docker & Minikube') {
-  steps {
-    bat '''
-      echo ===== Vérification de Docker =====
-      docker version >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        echo Docker non disponible.
-        exit /b 1
-      )
-
-      echo ===== Vérification du cluster Minikube =====
-      minikube status >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        echo Cluster inactif, démarrage...
-        minikube start --driver=docker --memory=4096 --cpus=2
-      ) else (
-        echo Cluster actif.
-      )
-
-      echo ===== Copie de la configuration Minikube pour Jenkins =====
-      if not exist "C:\\ProgramData\\Jenkins\\.kube" mkdir "C:\\ProgramData\\Jenkins\\.kube"
-      
-      REM Copier le kubeconfig de minikube vers Jenkins
-      copy /Y "%USERPROFILE%\\.kube\\config" "C:\\ProgramData\\Jenkins\\.kube\\config"
-      
-      REM Copier les certificats minikube
-      if not exist "C:\\ProgramData\\Jenkins\\.minikube" mkdir "C:\\ProgramData\\Jenkins\\.minikube"
-      xcopy /E /I /Y "%USERPROFILE%\\.minikube\\ca.crt" "C:\\ProgramData\\Jenkins\\.minikube\\"
-      xcopy /E /I /Y "%USERPROFILE%\\.minikube\\profiles" "C:\\ProgramData\\Jenkins\\.minikube\\profiles\\"
-
-      echo ===== Mise à jour du kubeconfig pour Jenkins =====
-      powershell -Command ^
-        "$config = Get-Content 'C:\\ProgramData\\Jenkins\\.kube\\config' -Raw;" ^
-        "$config = $config -replace [regex]::Escape('%USERPROFILE%'), 'C:\\ProgramData\\Jenkins';" ^
-        "$config = $config -replace [regex]::Escape($env:USERPROFILE), 'C:\\ProgramData\\Jenkins';" ^
-        "$config | Set-Content 'C:\\ProgramData\\Jenkins\\.kube\\config'"
-
-      echo ===== Configuration kubectl =====
-      set KUBECONFIG=C:\\ProgramData\\Jenkins\\.kube\\config
-      kubectl config use-context minikube
-      
-      echo ===== Test de connectivité =====
-      kubectl get nodes
-      if %ERRORLEVEL% NEQ 0 (
-        echo Échec de connexion au cluster.
-        exit /b 1
-      )
-      
-      echo ===== Création du namespace =====
-      kubectl get namespace transport >nul 2>&1
-      if %ERRORLEVEL% NEQ 0 (
-        kubectl create namespace transport
-      )
-      
-      echo Initialisation terminée avec succès.
-    '''
-  }
-}
+    stage('Verify Kubernetes Cluster') {
+      steps {
+        echo "=== ☸️  STAGE: Verify Kubernetes Cluster ==="
+        bat '''
+          echo ===== Verification de la configuration Kubernetes =====
+          
+          REM Vérifier que kubectl est disponible
+          kubectl version --client >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            echo kubectl non disponible.
+            exit /b 1
+          )
+          
+          echo ===== Verification de la connectivité au cluster =====
+          kubectl get nodes
+          if %ERRORLEVEL% NEQ 0 (
+            echo Echec de connexion au cluster.
+            exit /b 1
+          )
+          
+          echo ===== Verification du namespace =====
+          kubectl get namespace %K8S_NAMESPACE% >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            echo Creation du namespace %K8S_NAMESPACE%...
+            kubectl create namespace %K8S_NAMESPACE%
+          ) else (
+            echo Namespace %K8S_NAMESPACE% existe deja.
+          )
+          
+          echo ===== Verification réussie =====
+        '''
+      }
+    }
 
     stage('Deploy to Kubernetes') {
       steps {
+        echo "=== 🚀 STAGE: Deploy to Kubernetes ==="
         bat """
+          echo ===== Mise a jour de l'image dans le manifest =====
           powershell -Command "(Get-Content Deployment.yaml) -replace 'image: saadalaouisosse/trajet-service:1.0.0', 'image: ${IMAGE_NAME}' | Set-Content Deployment.yaml"
-
-          kubectl get secret trajet-horraire-secret -n ${K8S_NAMESPACE} >nul 2>&1
+          
+          echo ===== Verification et creation du secret =====
+          kubectl get secret trajet-horraire-secret -n %K8S_NAMESPACE% >nul 2>&1
           if %ERRORLEVEL% NEQ 0 (
-            echo Création du secret trajet-horraire-secret...
+            echo Creation du secret trajet-horraire-secret...
             kubectl create secret generic trajet-horraire-secret ^
-              --from-literal=DB_HOST=trajet-horraire-db ^
+              --from-literal=DB_HOST=postgres-service ^
               --from-literal=DB_PORT=5432 ^
               --from-literal=DB_NAME=service_trajet_horraire ^
               --from-literal=DB_USER=trajet_horraire ^
               --from-literal=DB_PASS=trajet_horraire ^
               --from-literal=SPRING_PROFILES_ACTIVE=prod ^
-              -n ${K8S_NAMESPACE}
+              -n %K8S_NAMESPACE%
           ) else (
-            echo Secret déjà présent, aucune création nécessaire.
+            echo Secret existe deja, aucune creation necessaire.
           )
-
-          kubectl apply -f postgres-deployment.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f postres-service.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f Deployment.yaml -n ${K8S_NAMESPACE}
-          kubectl apply -f service.yaml -n ${K8S_NAMESPACE}
-          kubectl rollout status deployment/${APP_NAME} -n ${K8S_NAMESPACE} --timeout=5m
+          
+          echo ===== Application des manifests Kubernetes =====
+          kubectl apply -f postgres-deployment.yaml -n %K8S_NAMESPACE%
+          kubectl apply -f postgres-service.yaml -n %K8S_NAMESPACE%
+          kubectl apply -f Deployment.yaml -n %K8S_NAMESPACE%
+          kubectl apply -f service.yaml -n %K8S_NAMESPACE%
+          
+          echo ===== Attente du rollout du deployment =====
+          kubectl rollout status deployment/%APP_NAME% -n %K8S_NAMESPACE% --timeout=5m
+          if %ERRORLEVEL% NEQ 0 (
+            echo Echec du rollout status
+            kubectl get pods -n %K8S_NAMESPACE%
+            exit /b 1
+          )
         """
+        echo "✅ Deployment completed successfully"
       }
     }
+
+    stage('Verify Deployment') {
+      steps {
+        echo "=== ✅ STAGE: Verify Deployment ==="
+        bat '''
+          echo ===== Verification des pods =====
+          kubectl get pods -n %K8S_NAMESPACE%
+          
+          echo ===== Verification des services =====
+          kubectl get svc -n %K8S_NAMESPACE%
+          
+          echo ===== Logs du dernier pod =====
+          for /f "tokens=1" %%i in ('kubectl get pods -n %K8S_NAMESPACE% -l app=service-trajet -o jsonpath={.items[0].metadata.name} 2^>nul') do (
+            echo Logs pour le pod: %%i
+            kubectl logs %%i -n %K8S_NAMESPACE% --tail=50
+          )
+        '''
+      }
+    }
+
   }
 
   post {
     success {
-      echo "Déploiement réussi sur Kubernetes : ${IMAGE_NAME}"
+      echo "✅ Pipeline succeeded: ${APP_NAME} deployed with image ${IMAGE_NAME}"
+      bat "echo Pipeline Status: SUCCESS > pipeline-status.txt"
     }
     failure {
-      echo "Pipeline échoué."
+      echo "❌ Pipeline failed."
+      bat '''
+        echo Pipeline Status: FAILED > pipeline-status.txt
+        kubectl get pods -n %K8S_NAMESPACE%
+        for /f "tokens=1" %%i in ('kubectl get pods -n %K8S_NAMESPACE% -l app=service-trajet -o jsonpath={.items[0].metadata.name} 2^>nul') do (
+          echo --- Logs d'erreur ---
+          kubectl logs %%i -n %K8S_NAMESPACE%
+        )
+      '''
     }
     always {
+      echo "Pipeline execution completed"
       cleanWs()
     }
   }
