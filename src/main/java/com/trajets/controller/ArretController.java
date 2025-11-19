@@ -1,5 +1,6 @@
 package com.trajets.controller;
 
+import jakarta.validation.Valid;
 import com.trajets.dto.request.ArretCreateRequest;
 import com.trajets.dto.response.ArretDTO;
 import com.trajets.service.ArretService;
@@ -26,7 +27,7 @@ public class ArretController {
     }
 
     @PostMapping
-    public ArretDTO create(@RequestBody ArretCreateRequest request) {
+    public ArretDTO create(@Valid @RequestBody ArretCreateRequest request) {
         return arretService.createArret(request);
     }
 

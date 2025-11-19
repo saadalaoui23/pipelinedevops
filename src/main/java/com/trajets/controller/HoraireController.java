@@ -1,5 +1,6 @@
 package com.trajets.controller;
 
+import jakarta.validation.Valid;
 import com.trajets.dto.request.HoraireCreateRequest;
 import com.trajets.dto.response.HoraireDTO;
 import com.trajets.service.HoraireService;
@@ -26,7 +27,7 @@ public class HoraireController {
     }
 
     @PostMapping
-    public HoraireDTO create(@RequestBody HoraireCreateRequest request) {
+    public HoraireDTO create(@Valid @RequestBody HoraireCreateRequest request) {
         return horaireService.createHoraire(request);
     }
 

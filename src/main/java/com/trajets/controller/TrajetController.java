@@ -1,5 +1,6 @@
 package com.trajets.controller;
 
+import jakarta.validation.Valid;
 import com.trajets.dto.request.TrajetCreateRequest;
 import com.trajets.dto.response.TrajetDTO;
 import com.trajets.service.TrajetService;
@@ -26,7 +27,7 @@ public class TrajetController {
     }
 
     @PostMapping
-    public TrajetDTO create(@RequestBody TrajetCreateRequest request) {
+    public TrajetDTO create(@Valid @RequestBody TrajetCreateRequest request) {
         return trajetService.createTrajet(request);
     }
 
